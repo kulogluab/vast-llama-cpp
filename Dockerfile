@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.2.2-devel-ubuntu22.04
+FROM vastai/base-image:cuda-12.1.1-auto
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -26,6 +26,7 @@ COPY start-llama.sh /usr/local/bin/start-llama
 RUN chmod +x /usr/local/bin/start-llama
 
 WORKDIR /workspace
+
 EXPOSE 18000
 
 CMD ["/usr/local/bin/start-llama"]
