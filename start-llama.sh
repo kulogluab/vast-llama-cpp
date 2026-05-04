@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ -f /venv/main/bin/activate ]]; then
+  source /venv/main/bin/activate
+fi
+
 export HF_HUB_ENABLE_HF_TRANSFER=1
 
 : "${LLAMA_HF_REPO:?Set LLAMA_HF_REPO}"
@@ -38,6 +42,8 @@ if [[ ! -f "$MODEL_PATH" ]]; then
   hf download "$LLAMA_HF_REPO" "$LLAMA_GGUF_FILE" \
     --local-dir "$LLAMA_MODEL_DIR" \
     "${HF_ARGS[@]}"
+else
+  echo "Model already exists: $MODEL_PATH"
 fi
 
 ARGS=(
@@ -52,6 +58,10 @@ ARGS=(
   --flash-attn auto
   --reasoning auto
 )
+
+if [[ -n "${LLAMA_PARALLEL:-}" ]]; then
+  ARGS+=(--parallel "$LLAMA_PARALLEL")
+fi
 
 if [[ -n "${LLAMA_DEVICE:-}" ]]; then
   ARGS+=(--device "$LLAMA_DEVICE")
@@ -70,5 +80,9 @@ if [[ -n "${LLAMA_EXTRA_ARGS:-}" ]]; then
   ARGS+=("${EXTRA[@]}")
 fi
 
-echo "Starting llama-server on http://$LLAMA_HOST:$LLAMA_PORT"
+echo "Starting llama-server:"
+echo "  model:    $MODEL_PATH"
+echo "  alias:    $LLAMA_ALIAS"
+echo "  endpoint: http://$LLAMA_HOST:$LLAMA_PORT/v1"
+
 exec /opt/llama.cpp/build/bin/llama-server "${ARGS[@]}"
