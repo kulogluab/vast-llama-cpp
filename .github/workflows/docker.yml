@@ -41,5 +41,6 @@ jobs:
           tags: ${{ env.IMAGE_NAME }}
           build-args: |
             CUDA_ARCHITECTURES=86;89
+            LLAMA_CPP_REF=b9028
           cache-from: type=gha
           cache-to: type=gha,mode=max
