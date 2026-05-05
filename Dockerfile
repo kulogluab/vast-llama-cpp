@@ -6,7 +6,6 @@ ARG LLAMA_CPP_REF=master
 
 # 86 = RTX 3090 / RTX A6000
 # 89 = RTX 4090 / L40 / L40S
-# Do not include 120 here unless you move to a CUDA base image that supports Blackwell well.
 ARG CUDA_ARCHITECTURES="86;89"
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -48,17 +47,28 @@ RUN if [[ -f /venv/main/bin/activate ]]; then source /venv/main/bin/activate; fi
 
 WORKDIR /opt
 
-RUN git clone --depth 1 --branch "$LLAMA_CPP_REF" https://github.com/ggml-org/llama.cpp.git && \
-    cd llama.cpp && \
+RUN set -eux; \
+    git clone --depth 1 --branch "$LLAMA_CPP_REF" https://github.com/ggml-org/llama.cpp.git; \
+    cd llama.cpp; \
     cmake -B build -G Ninja \
       -DGGML_CUDA=ON \
       -DLLAMA_CURL=ON \
       -DGGML_NATIVE=OFF \
       -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}" \
-      -DCMAKE_BUILD_TYPE=Release && \
-    cmake --build build --target llama-server -j 2 && \
-    strip build/bin/llama-server || true && \
-    rm -rf .git
+      -DCMAKE_BUILD_TYPE=Release; \
+    cmake --build build --target llama-server -j 2; \
+    echo "Searching for built llama-server binary..."; \
+    LLAMA_SERVER_BIN="$(find /opt/llama.cpp/build -type f -name llama-server -perm -111 | head -n 1)"; \
+    if [[ -z "$LLAMA_SERVER_BIN" ]]; then \
+      echo "ERROR: llama-server binary was not found after build"; \
+      find /opt/llama.cpp/build -maxdepth 4 -type f | sort | tail -200; \
+      exit 1; \
+    fi; \
+    echo "Found llama-server at: $LLAMA_SERVER_BIN"; \
+    ln -sf "$LLAMA_SERVER_BIN" /usr/local/bin/llama-server; \
+    /usr/local/bin/llama-server --help >/dev/null; \
+    strip "$LLAMA_SERVER_BIN" || true; \
+    rm -rf /opt/llama.cpp/.git
 
 COPY start-llama.sh /usr/local/bin/start-llama
 RUN chmod +x /usr/local/bin/start-llama
