@@ -33,3 +33,7 @@ jobs:
           context: .
           push: true
           tags: ${{ env.IMAGE_NAME }}
+          build-args: |
+            CUDA_ARCHITECTURES=86;89
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
