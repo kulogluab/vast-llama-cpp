@@ -2,9 +2,6 @@ FROM vastai/base-image:cuda-12.1.1-auto
 
 SHELL ["/bin/bash", "-lc"]
 
-# Pin this once a build succeeds. b9028 existed in the current llama.cpp releases
-# at the time this handover was reviewed. Change to master only if you explicitly
-# want the newest upstream state.
 ARG LLAMA_CPP_REF=b9028
 
 # 86 = RTX 3090 / RTX A6000
@@ -14,7 +11,7 @@ ARG LLAMA_CPP_REF=b9028
 ARG CUDA_ARCHITECTURES="86;89"
 
 # Safe default for GitHub-hosted runners. Increase to 2 only after a successful build.
-ARG BUILD_JOBS=1
+ARG BUILD_JOBS=2
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -59,6 +56,27 @@ RUN set -eux; \
 WORKDIR /opt
 
 RUN set -euxo pipefail; \
+    CUDA_STUBS_DIR=""; \
+    for candidate in \
+      /usr/local/cuda/lib64/stubs \
+      /usr/local/cuda/targets/x86_64-linux/lib/stubs \
+      /usr/local/cuda-12.1/lib64/stubs \
+      /usr/local/cuda-12.1/targets/x86_64-linux/lib/stubs; do \
+      if [[ -f "${candidate}/libcuda.so" ]]; then \
+        CUDA_STUBS_DIR="$candidate"; \
+        break; \
+      fi; \
+    done; \
+    if [[ -z "$CUDA_STUBS_DIR" ]]; then \
+      echo "ERROR: Could not find CUDA stub libcuda.so"; \
+      find /usr/local -path '*/stubs/libcuda.so' -print || true; \
+      exit 1; \
+    fi; \
+    echo "Using CUDA stubs from: $CUDA_STUBS_DIR"; \
+    ln -sf libcuda.so "${CUDA_STUBS_DIR}/libcuda.so.1"; \
+    ls -l "${CUDA_STUBS_DIR}/libcuda.so" "${CUDA_STUBS_DIR}/libcuda.so.1"; \
+    export LIBRARY_PATH="${CUDA_STUBS_DIR}${LIBRARY_PATH:+:${LIBRARY_PATH}}"; \
+    export LDFLAGS="-Wl,-rpath-link,${CUDA_STUBS_DIR} ${LDFLAGS:-}"; \
     git clone --depth 1 --branch "$LLAMA_CPP_REF" https://github.com/ggml-org/llama.cpp.git; \
     cd llama.cpp; \
     cmake -B build -G Ninja \
@@ -66,7 +84,8 @@ RUN set -euxo pipefail; \
       -DLLAMA_CURL=ON \
       -DGGML_NATIVE=OFF \
       -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}" \
-      -DCMAKE_BUILD_TYPE=Release; \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_EXE_LINKER_FLAGS="-Wl,-rpath-link,${CUDA_STUBS_DIR}"; \
     echo "Building llama-server with CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES}, BUILD_JOBS=${BUILD_JOBS}"; \
     if ! cmake --build build --target llama-server -j "${BUILD_JOBS}" 2>&1 | tee /tmp/llama-build.log; then \
       echo "ERROR: llama-server build failed. Last 300 build-log lines:"; \
@@ -75,6 +94,8 @@ RUN set -euxo pipefail; \
       df -h || true; \
       echo "Memory info:"; \
       free -h || true; \
+      echo "CUDA stubs:"; \
+      ls -l "${CUDA_STUBS_DIR}" || true; \
       exit 1; \
     fi; \
     echo "Searching for built llama-server binary..."; \
