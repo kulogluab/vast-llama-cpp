@@ -29,7 +29,7 @@ if [[ ! -x "$LLAMA_SERVER_BIN" ]]; then
   log "ERROR: llama-server binary not found or not executable:"
   log "  $LLAMA_SERVER_BIN"
   log "Searching for alternatives..."
-  find /opt /usr/local/bin -type f -name llama-server -o -type l -name llama-server 2>/dev/null || true
+  find /opt /usr/local/bin /usr/local/lib -type f -name llama-server -o -type l -name llama-server 2>/dev/null || true
   exit 1
 fi
 

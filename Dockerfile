@@ -61,20 +61,20 @@ RUN set -eux; \
     LLAMA_SERVER_BIN="$(find /opt/llama.cpp/build -type f -name llama-server -perm -111 | head -n 1)"; \
     if [[ -z "$LLAMA_SERVER_BIN" ]]; then \
       echo "ERROR: llama-server binary was not found after build"; \
-      find /opt/llama.cpp/build -maxdepth 4 -type f | sort | tail -200; \
+      find /opt/llama.cpp/build -maxdepth 5 -type f | sort | tail -200; \
       exit 1; \
     fi; \
     echo "Found llama-server at: $LLAMA_SERVER_BIN"; \
-    ln -sf "$LLAMA_SERVER_BIN" /usr/local/bin/llama-server; \
-    /usr/local/bin/llama-server --help >/dev/null; \
+    mkdir -p /usr/local/lib/llama.cpp; \
+    ln -sf "$LLAMA_SERVER_BIN" /usr/local/lib/llama.cpp/llama-server-real; \
+    cat > /usr/local/bin/llama-server <<'EOF'; \
+#!/usr/bin/env bash
+set -euo pipefail
+export LD_LIBRARY_PATH="/opt/llama.cpp/build/bin:/opt/llama.cpp/build/src:/opt/llama.cpp/build/ggml/src:${LD_LIBRARY_PATH:-}"
+exec /usr/local/lib/llama.cpp/llama-server-real "$@"
+EOF
+    chmod +x /usr/local/bin/llama-server; \
+    test -x /usr/local/lib/llama.cpp/llama-server-real; \
+    test -x /usr/local/bin/llama-server; \
     strip "$LLAMA_SERVER_BIN" || true; \
     rm -rf /opt/llama.cpp/.git
-
-COPY start-llama.sh /usr/local/bin/start-llama
-RUN chmod +x /usr/local/bin/start-llama
-
-WORKDIR /workspace
-
-EXPOSE 18000
-
-CMD ["/usr/local/bin/start-llama"]
