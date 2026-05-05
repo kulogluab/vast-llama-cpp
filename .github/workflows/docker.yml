@@ -31,16 +31,19 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Lowercase image name
+        shell: bash
         run: echo "IMAGE_NAME=ghcr.io/${GITHUB_REPOSITORY,,}:cuda12.1-vast" >> "$GITHUB_ENV"
 
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: linux/amd64
           push: true
           tags: ${{ env.IMAGE_NAME }}
           build-args: |
             CUDA_ARCHITECTURES=86;89
+            BUILD_JOBS=1
             LLAMA_CPP_REF=b9028
           cache-from: type=gha
           cache-to: type=gha,mode=max

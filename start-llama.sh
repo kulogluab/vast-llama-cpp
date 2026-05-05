@@ -9,8 +9,6 @@ if [[ -f /venv/main/bin/activate ]]; then
   source /venv/main/bin/activate
 fi
 
-export HF_HUB_ENABLE_HF_TRANSFER="${HF_HUB_ENABLE_HF_TRANSFER:-1}"
-
 : "${LLAMA_HF_REPO:?Set LLAMA_HF_REPO}"
 : "${LLAMA_GGUF_FILE:?Set LLAMA_GGUF_FILE}"
 
@@ -22,14 +20,28 @@ LLAMA_N_GPU_LAYERS="${LLAMA_N_GPU_LAYERS:-all}"
 LLAMA_MODEL_DIR="${LLAMA_MODEL_DIR:-/workspace/models}"
 LLAMA_API_KEY_FILE="${LLAMA_API_KEY_FILE:-/workspace/llama-api-key.txt}"
 LLAMA_DOWNLOAD_LOG_INTERVAL="${LLAMA_DOWNLOAD_LOG_INTERVAL:-30}"
-
 LLAMA_SERVER_BIN="${LLAMA_SERVER_BIN:-/usr/local/bin/llama-server}"
+
+# More forgiving defaults for large model downloads.
+export HF_HUB_DOWNLOAD_TIMEOUT="${HF_HUB_DOWNLOAD_TIMEOUT:-60}"
+export HF_HUB_ETAG_TIMEOUT="${HF_HUB_ETAG_TIMEOUT:-30}"
+
+# Optional. Set HF_XET_HIGH_PERFORMANCE=1 in the Vast template only after testing
+# that the chosen host has enough network/CPU/RAM headroom.
+if [[ -n "${HF_XET_HIGH_PERFORMANCE:-}" ]]; then
+  export HF_XET_HIGH_PERFORMANCE
+fi
+
+if ! command -v hf >/dev/null 2>&1; then
+  log "ERROR: Hugging Face CLI 'hf' was not found."
+  exit 1
+fi
 
 if [[ ! -x "$LLAMA_SERVER_BIN" ]]; then
   log "ERROR: llama-server binary not found or not executable:"
   log "  $LLAMA_SERVER_BIN"
   log "Searching for alternatives..."
-  find /opt /usr/local/bin /usr/local/lib -type f -name llama-server -o -type l -name llama-server 2>/dev/null || true
+  find /opt /usr/local/bin /usr/local/lib \( -type f -name llama-server -o -type l -name llama-server \) 2>/dev/null || true
   exit 1
 fi
 
@@ -41,6 +53,7 @@ mkdir -p "$LLAMA_MODEL_DIR"
 MODEL_PATH="$LLAMA_MODEL_DIR/$LLAMA_GGUF_FILE"
 
 if [[ ! -s "$LLAMA_API_KEY_FILE" ]]; then
+  umask 077
   if [[ -n "${LLAMA_API_KEY:-}" ]]; then
     printf '%s\n' "$LLAMA_API_KEY" > "$LLAMA_API_KEY_FILE"
   else
@@ -67,7 +80,7 @@ monitor_download() {
   done
 }
 
-if [[ ! -f "$MODEL_PATH" ]]; then
+download_model() {
   log "Preparing to download model:"
   log "  repo:   $LLAMA_HF_REPO"
   log "  file:   $LLAMA_GGUF_FILE"
@@ -96,12 +109,17 @@ if [[ ! -f "$MODEL_PATH" ]]; then
   trap - EXIT
 
   log "Download command finished."
+}
+
+if [[ ! -s "$MODEL_PATH" ]]; then
+  download_model
 else
-  log "Model already exists: $MODEL_PATH"
+  log "Model already exists and is non-empty:"
+  log "  $MODEL_PATH"
 fi
 
-if [[ ! -f "$MODEL_PATH" ]]; then
-  log "ERROR: Expected model file was not found after download:"
+if [[ ! -s "$MODEL_PATH" ]]; then
+  log "ERROR: Expected model file was not found or is empty after download:"
   log "  $MODEL_PATH"
   log "Files currently in model directory:"
   find "$LLAMA_MODEL_DIR" -maxdepth 3 -type f -printf "%s %p\n" 2>/dev/null || true
@@ -141,6 +159,8 @@ if [[ -n "${LLAMA_TENSOR_SPLIT:-}" ]]; then
 fi
 
 if [[ -n "${LLAMA_EXTRA_ARGS:-}" ]]; then
+  # Simple whitespace splitting only. Prefer dedicated LLAMA_* env vars above
+  # for arguments containing spaces.
   read -r -a EXTRA <<< "$LLAMA_EXTRA_ARGS"
   ARGS+=("${EXTRA[@]}")
 fi

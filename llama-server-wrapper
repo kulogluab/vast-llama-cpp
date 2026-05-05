@@ -1,6 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export LD_LIBRARY_PATH="/opt/llama.cpp/build/bin:/opt/llama.cpp/build/src:/opt/llama.cpp/build/ggml/src:${LD_LIBRARY_PATH:-}"
+REAL_BIN="/usr/local/lib/llama.cpp/llama-server-real"
 
-exec /usr/local/lib/llama.cpp/llama-server-real "$@"
+if [[ ! -x "$REAL_BIN" ]]; then
+  echo "ERROR: real llama-server binary not found or not executable: $REAL_BIN" >&2
+  exit 1
+fi
+
+LLAMA_LIB_DIRS=()
+
+for dir in \
+  /opt/llama.cpp/build/bin \
+  /opt/llama.cpp/build/src \
+  /opt/llama.cpp/build/common \
+  /opt/llama.cpp/build/ggml/src \
+  /opt/llama.cpp/build/ggml/src/ggml-cpu \
+  /opt/llama.cpp/build/ggml/src/ggml-cuda
+do
+  if [[ -d "$dir" ]]; then
+    LLAMA_LIB_DIRS+=("$dir")
+  fi
+done
+
+if (( ${#LLAMA_LIB_DIRS[@]} > 0 )); then
+  LLAMA_LD_LIBRARY_PATH="$(IFS=:; echo "${LLAMA_LIB_DIRS[*]}")"
+  export LD_LIBRARY_PATH="${LLAMA_LD_LIBRARY_PATH}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+fi
+
+exec "$REAL_BIN" "$@"
