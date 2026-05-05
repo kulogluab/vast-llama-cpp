@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export LD_LIBRARY_PATH="/opt/llama.cpp/build/bin:/opt/llama.cpp/build/src:/opt/llama.cpp/build/ggml/src:${LD_LIBRARY_PATH:-}"
+
+exec /usr/local/lib/llama.cpp/llama-server-real "$@"
